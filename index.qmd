@@ -1,0 +1,165 @@
+---
+title: "Influenza A H7N9 in China, 2013"
+format: dashboard
+theme: morph
+---
+
+```{r include=FALSE, echo=FALSE, message=FALSE}
+# Load packages 
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse, outbreaks, bslib, bsicons, shiny, 
+               rgeoboundaries, plotly, htmltools, reactable)
+
+# view data
+head(outbreaks::fluH7N9_china_2013)
+```
+
+```{r include=FALSE, echo=FALSE, message=FALSE}
+data <- outbreaks::fluH7N9_china_2013
+
+n_cases <- data %>% nrow()
+
+n_hospitalization <- data %>% 
+  filter(!is.na(date_of_hospitalisation)) %>% 
+  nrow()
+
+n_deaths <- data %>% 
+  filter(outcome=="Death") %>% 
+  nrow()
+
+graph_province <- data %>% 
+  group_by(province) %>% 
+  count() %>% 
+  arrange(-n) %>% 
+  mutate(tooltip_label = paste(province, 
+                               n, 
+                               sep = ": ")) %>% 
+  ggplot(mapping = aes(x = n, 
+                       y = fct_reorder(province, n),
+                       text = tooltip_label)) +
+  geom_col(fill = "lightblue") +
+  theme_minimal() +
+  labs(x = "Number of cases",
+       y = "")
+
+graph_province_plotly <- ggplotly(graph_province, tooltip = "text")
+```
+
+
+```{r results='hide', message=FALSE, warning = FALSE}
+#create graph
+pacman::p_load(outbreaks, rgeoboundaries, plotly)
+
+### MAP OF CASES PER PROVINCE
+province_summary <- fluH7N9_china_2013 %>% 
+  group_by(province) %>% 
+  summarise(total_cases = n()) 
+
+china_map <- rgeoboundaries::gb_adm1("china")
+
+# Check the keys to see if join will be successful
+setdiff(province_summary$province, china_map$shapeName)
+setdiff(china_map$shapeName, province_summary$province)
+# Some work to be done to harmonize these
+
+china_map <- china_map %>%
+  # Remove the strings Province, Municipality and Autonomous Region 
+  # to allow matching
+  mutate(province = str_trim(
+    str_remove(shapeName, "Province|Municipality|Autonomous Region|Special Administrative Region")
+  ))
+
+# Check if join will work fine
+setdiff(province_summary$province, china_map$province)
+
+# Fix Guangdong, which based on a quick Google is actually Guangzhou
+china_map <- china_map %>% 
+  mutate(province = if_else(province == "Guangzhou", "Guangdong", province)) 
+# Check again
+setdiff(province_summary$province, china_map$province)
+
+# Now join
+china_map_joined <- 
+  left_join(china_map, province_summary, by = "province") %>% 
+  # Create tooltip label 
+  mutate(tooltip_label = paste0(province, ": ", total_cases))
+
+china_map_plot <- ggplot(china_map_joined) +
+  geom_sf(aes(fill = total_cases, text = tooltip_label)) + 
+  theme_void() +
+  labs(fill = "Number of Cases") + 
+  theme(legend.position = "none")
+
+china_map_plot_ggplotly <- 
+  ggplotly(china_map_plot, tooltip = "text")
+
+```
+
+# HOME 
+
+## {height=20%}
+
+```{r}
+value_box(
+  title = "Total cases",
+  value = n_cases,
+  showcase = bsicons::bs_icon("virus"),
+  theme = value_box_theme(bg = "#518fd6")
+)
+```
+
+```{r}
+value_box(
+  title = "Total hospitalizations",
+  value = n_hospitalization,
+  showcase = bsicons::bs_icon("hospital"),
+  theme = value_box_theme(bg = "#518fd6")
+)
+```
+
+```{r}
+value_box(
+  title = "Total deaths",
+  value = n_deaths,
+  showcase = bsicons::bs_icon("file-medical"),
+  theme = value_box_theme(bg = "#518fd6")
+)
+```
+
+## {height=80%}
+
+### {width=30%}
+
+```{r title = "Number of Cases by Province"}
+graph_province_plotly
+```
+
+### {width=70%}
+
+```{r title = "Map of Provinces by Number of Cases"}
+china_map_plot_ggplotly
+```
+
+# DOWNLOAD DATA
+
+```{r}
+htmltools::browsable(
+  tagList(
+    reactable(data, 
+              elementId = "data-table", 
+              searchable = T, 
+              filterable = T), 
+    
+tags$button("Download as CSV", 
+            onclick = "Reactable.downloadDataCSV('data-table')")
+  )
+)
+```
+
+# ABOUT
+
+Avian influenza A(H7N9) is a subtype of influenza viruses that have been detected in birds in the past. This particular A(H7N9) virus had not previously been seen in either animals or people until it was found in March 2013 in China.
+
+However, since then, infections in both humans and birds have been observed. The disease is of concern because most patients have become severely ill. Most of the cases of human infection with this avian H7N9 virus have reported recent exposure to live poultry or potentially contaminated environments, especially markets where live birds have been sold. This virus does not appear to transmit easily from person to person, and sustained human-to-human transmission has not been reported.
+
+For more information you can refer to <https://www.who.int/emergencies/situations/avian-influenza-a-(h7n9)-virus-outbreak>
